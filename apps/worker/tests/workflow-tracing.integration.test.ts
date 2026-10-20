@@ -189,6 +189,50 @@ describe.sequential("real Temporal workflow OTLP export", () => {
     } finally { await spans.close(); }
   }, 60_000);
 
+  it.each([
+    { type: "dotGoalWorkflow", input: { goalId: "goal:synthetic" }, activity: "dotGoalStep",
+      result: { state: "DONE", runId: null, goalStatus: "COMPLETED" } },
+    { type: "roomAgentActionWorkflow", input: { actionId: "action:synthetic", traceId: "trace:synthetic" }, activity: "runRoomAgentBackgroundAction",
+      result: { status: "COMPLETED" } },
+    { type: "memoryMutationWorkflow", input: { changeSetId: "memory_change:synthetic", traceId: "trace:synthetic" }, activity: "executePersistedMemoryChangeSet",
+      result: { status: "COMPLETED" } }
+  ])("parents $type and its activity through memo when input has no W3C fields", async ({ type, input, activity, result }) => {
+    const start = received.length;
+    const spans = exporter();
+    const { instance, taskQueue } = await worker(spans, { [activity]: async () => result });
+    try {
+      await instance.runUntil(env.client.workflow.execute(type, {
+        workflowId: `memo-trace-${++counter}`, taskQueue, workflowExecutionTimeout: "30 seconds",
+        args: [input], memo: { traceparent }
+      }));
+      await spans.flush();
+      const exported = received.slice(start);
+      const workflow = exported.find(s => s.name === `workflow ${type}`)!;
+      const attempt = exported.find(s => s.name === `activity ${activity}`)!;
+      expect(workflow).toBeDefined(); expect(attempt).toBeDefined();
+      expect(workflow.traceId).toBe(traceId);
+      expect(workflow.parentSpanId).toBe(apiSpanId);
+      expect(attempt.traceId).toBe(traceId);
+      expect(attempt.parentSpanId).toBe(workflow.spanId);
+    } finally { await spans.close(); }
+  }, 60_000);
+
+  it("performs no export when workflow instrumentation and the activity exporter are disabled", async () => {
+    const start = received.length;
+    const plainBundle = await bundleWorkflowCode({
+      workflowsPath: fileURLToPath(new URL("./fixtures/tracing-workflows.ts", import.meta.url))
+    });
+    const taskQueue = `untraced-${++counter}`;
+    const instance = await Worker.create({ connection: env.nativeConnection, taskQueue, workflowBundle: plainBundle,
+      activities: { recordDummyTurnStarted: async () => undefined, recordDummyTurnCompleted: async () => ({ status: "COMPLETED" }) },
+      interceptors: { activity: [createActivityObservabilityInterceptors({ spans: null })] }
+    });
+    await instance.runUntil(env.client.workflow.execute("dummyTurnWorkflow", {
+      workflowId: `untraced-${++counter}`, taskQueue, workflowExecutionTimeout: "30 seconds", args: [{ traceparent }]
+    }));
+    expect(received).toHaveLength(start);
+  }, 60_000);
+
   it("keeps a second signaled supervisor mission and its activities in that request's trace", async () => {
     const start = received.length;
     const spans = exporter();
