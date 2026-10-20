@@ -282,6 +282,18 @@ describe.sequential("real Temporal workflow OTLP export", () => {
           const background = item("background", "00-33333333333333333333333333333333-4444444444444444-01");
           await handle.signal(ROOM_AGENT_ENQUEUE_SIGNAL, { ...background, turn: { ...background.turn, traceLink: secondParent } });
           await waitForMission(backgroundFinished);
+          // The activity stub resolves before the SDK reports its completion.
+          // Wait for the server to record that completion and the following
+          // workflow task before cancelling the now-idle supervisor. Cancelling
+          // from inside the stub races activity completion on the test server.
+          await expect.poll(async () => {
+            const events = (await handle.fetchHistory()).events ?? [];
+            const finishes = events.filter(event => event.activityTaskScheduledEventAttributes?.activityType?.name === "finishRoomAgentSupervisorTurn");
+            if (finishes.length !== 3) return false;
+            const scheduledId = String(finishes[2]!.eventId);
+            const completed = events.findIndex(event => String(event.activityTaskCompletedEventAttributes?.scheduledEventId) === scheduledId);
+            return completed >= 0 && events.slice(completed + 1).some(event => event.workflowTaskCompletedEventAttributes);
+          }, { timeout: 10_000, interval: 20 }).toBe(true);
         } finally {
           await handle.cancel();
           await expect(handle.result()).rejects.toThrow();
