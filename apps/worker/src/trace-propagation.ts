@@ -6,6 +6,7 @@ export const TRACE_LINK_HEADER = "space-trace-link";
 type TracePayload = { metadata?: Record<string, Uint8Array> | null; data?: Uint8Array | null };
 export type TraceHeaders = Record<string, TracePayload>;
 
+/** Encode validated ASCII trace context using Temporal's json/plain payload format. */
 export function traceHeader(value: string): TracePayload {
   // Trace contexts and the converter marker are ASCII. Do not depend on
   // TextEncoder/TextDecoder globals, which are absent in some workflow VMs.
@@ -13,6 +14,7 @@ export function traceHeader(value: string): TracePayload {
   return { metadata: { encoding: ascii("json/plain") }, data: ascii(JSON.stringify(value)) };
 }
 
+/** Decode a bounded header and reject malformed or invalid W3C context without throwing. */
 export function readTraceHeader(headers: TraceHeaders | undefined, key = TRACE_HEADER): string | null {
   try {
     const payload = headers?.[key];

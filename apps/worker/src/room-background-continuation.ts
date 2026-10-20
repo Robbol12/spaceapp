@@ -55,6 +55,10 @@ function recordedTokenUsage(executionState: Record<string, unknown>): MissionTok
     : null;
 }
 
+/**
+ * Prepare an idempotent continuation after the preceding turn and its actions settle.
+ * Enforce mission budgets and persist a fresh trace linked to the originating request.
+ */
 export async function prepareBackgroundContinuation(input: {
   roomId: string; missionId: string; continuationId: string;
 }, store: SpaceStore, maxContinuations = DEFAULT_ROOM_AGENT_MAX_CONTINUATIONS,

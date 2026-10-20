@@ -1,6 +1,7 @@
 import { buildCodexAppServerTurnWorkflowId, roomAgentSupervisorQueueItemSchema } from "@space/contracts";
 import { InMemorySpaceStore } from "@space/runtime";
 
+/** Build a settled synthetic mission store with optional request ancestry for continuation tests. */
 export function continuationFixture(actionType: "OPEN_TYPES" | "CONFIGURE_PANE" = "OPEN_TYPES", traceparent?: string) {
   const store = new InMemorySpaceStore();
   const room = store.createRoom({ name: "Continuation regression", initialPaneCount: 0 });

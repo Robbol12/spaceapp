@@ -154,6 +154,10 @@ function activityTraceparent(args: readonly unknown[]) {
   return parseTraceparent(found.traceparent);
 }
 
+/**
+ * Observe one activity attempt while preserving its return value or thrown failure.
+ * Temporal headers take precedence over argument context; exporter errors are isolated.
+ */
 export async function observeActivityExecution<T>(
   info: ActivityInfo,
   args: readonly unknown[],

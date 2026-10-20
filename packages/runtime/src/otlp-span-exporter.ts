@@ -72,6 +72,7 @@ function attributeValue(value: string | number) {
   return typeof value === "number" && Number.isInteger(value) ? { intValue: String(value) } : { stringValue: String(value) };
 }
 
+/** Serialize an OTLP/HTTP JSON batch, retaining at most eight valid identity-only links per span. */
 export function otlpTraceRequest(spans: readonly ServerSpan[], serviceName: string) {
   return {
     resourceSpans: [{

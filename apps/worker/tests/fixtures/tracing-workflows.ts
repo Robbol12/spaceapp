@@ -7,8 +7,7 @@ export { memoryMutationWorkflow } from "../../src/memory-mutation-workflows.js";
 
 const { traceEcho } = proxyActivities<{ traceEcho(): Promise<string> }>({ startToCloseTimeout: "1 minute" });
 
-// A short deterministic continuation exercises the same interceptor path as
-// production's long-running supervisors without manufacturing a large history.
+/** Exercise production continuation interceptors with two short deterministic runs. */
 export async function tracingContinuation(input: { iteration: number; traceparent: string }): Promise<string> {
   if (input.iteration === 0) await continueAsNew<typeof tracingContinuation>({ ...input, iteration: 1 });
   return traceEcho();

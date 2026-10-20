@@ -15,6 +15,7 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
   const segments = new Map<string, MissionSegment>();
   const missionSegments = new Map<string, MissionSegment>();
   const signaledContexts = new Map<string, Record<string, string>>();
+  /** Read only bounded identifier fields from known activity and mission containers. */
   const identifiers = (args: readonly unknown[]) => {
     const found: Record<string, string> = {};
     const read = (value: unknown, depth: number) => {
@@ -29,6 +30,7 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
     for (const arg of args) read(arg, 3);
     return { missionId: found.missionId ?? found.roomAgentMissionId, roomId: found.roomId, paneId: found.paneId };
   };
+  /** Reuse or create a bounded request segment when a supervisor handles later or background work. */
   const segmentFor = (args: readonly unknown[]): MissionSegment | null => {
     if (workflowInfo().workflowType !== "roomAgentSupervisorWorkflow" || !context) return null;
     const ids = identifiers(args);
@@ -68,6 +70,7 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
     missionSegments.set(ids.missionId, segment);
     return segment;
   };
+  /** Emit a mission segment once in this execution, with allowlisted outcomes and failure codes. */
   const closeSegment = (segment: MissionSegment | null, outcome: string, reasonCode?: unknown) => {
     if (!segment || segment.closed) return;
     segment.closed = true;
@@ -86,11 +89,13 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
         links: segment.links });
     } catch { /* Tracing never changes the supervisor's result. */ }
   };
+  /** Preserve unrelated headers while supplying the active parent and optional prior-run link. */
   const headersFor = (headers: TraceHeaders, link = false, parent = context): TraceHeaders => parent ? {
     ...headers, [TRACE_HEADER]: traceHeader(parent), ...(link ? { [TRACE_LINK_HEADER]: traceHeader(parent) } : {})
   } : headers;
   return {
     inbound: [{
+      /** Wrap the workflow execution and emit its terminal span through the replay-suppressed sink. */
       async execute(input, next) {
         const info = workflowInfo();
         const inbound = readTraceHeader(input.headers) ?? inputTraceContext(input.args) ?? parentContext ??
@@ -139,6 +144,7 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
           } catch { /* Instrumentation cannot replace a workflow result or failure. */ }
         }
       },
+      /** Retain bounded request contexts for signal-started and subsequent supervisor missions. */
       async handleSignal(input, next) {
         // signalWithStart supervisors receive their first request in signalArgs
         // rather than workflow args. The first request establishes ancestry;
@@ -160,6 +166,7 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
       }
     }],
     outbound: [{
+      /** Parent each activity attempt to its mission segment and close segments at lifecycle boundaries. */
       scheduleActivity: async (input, next) => {
         const segment = segmentFor(input.args);
         if (segment && input.activityType === "checkRoomAgentSupervisorTurn") segment.checked = true;
@@ -176,7 +183,9 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
           ["DONE", "READY"].includes((result as { state: string }).state)) closeSegment(segment, "COMPLETED");
         return result;
       },
+      /** Apply the same parent selection to local activities without adding workflow commands. */
       scheduleLocalActivity: (input, next) => next({ ...input, headers: headersFor(input.headers, false, segmentFor(input.args)?.context ?? context) }),
+      /** Nest children under their request segment and preserve explicit background continuation links. */
       startChildWorkflowExecution: (input, next) => {
         const segment = segmentFor(input.options.args);
         if (segment) return next({ ...input, headers: headersFor(input.headers, false, segment.context) });
@@ -192,6 +201,7 @@ export function createWorkflowObservabilityInterceptors(): WorkflowInterceptors 
         if (continuation) headers[TRACE_LINK_HEADER] = traceHeader(continuation);
         return next({ ...input, headers });
       },
+      /** Carry current ancestry plus a causal link to this run into the next execution. */
       continueAsNew: (input, next) => next({ ...input, headers: headersFor(input.headers, true) })
     }]
   };

@@ -40,6 +40,7 @@ function isAlreadyStarted(error: unknown): boolean {
   return error instanceof Error && error.name === "WorkflowExecutionAlreadyStartedError";
 }
 
+/** Schedule a validated change set under its stable workflow ID with request trace context in memo. */
 export async function scheduleMemoryMutation(
   rawInput: MemoryMutationWorkflowInput,
   startWorkflow: MemoryMutationWorkflowStarter,

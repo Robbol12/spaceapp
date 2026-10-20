@@ -39,6 +39,7 @@ export class TemporalDotGoalWorkflowCoordinator implements DotGoalWorkflowCoordi
     try { return await action(new Client({ connection, namespace: this.options.namespace })); }
     finally { await connection.close(); }
   }
+  /** Start a goal once; carry optional HTTP ancestry in memo without changing the workflow input. */
   start(goalId: string, traceId?: string) {
     return this.client(async (client) => {
       try {
